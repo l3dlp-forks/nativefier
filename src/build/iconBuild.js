@@ -1,7 +1,22 @@
 import path from 'path';
+import log from 'loglevel';
 import helpers from './../helpers/helpers';
-import pngToIcns from './../helpers/pngToIcns';
-const isOSX = helpers.isOSX;
+import iconShellHelpers from './../helpers/iconShellHelpers';
+
+const { isOSX } = helpers;
+const { convertToPng, convertToIco, convertToIcns } = iconShellHelpers;
+
+function iconIsIco(iconPath) {
+  return path.extname(iconPath) === '.ico';
+}
+
+function iconIsPng(iconPath) {
+  return path.extname(iconPath) === '.png';
+}
+
+function iconIsIcns(iconPath) {
+  return path.extname(iconPath) === '.icns';
+}
 
 /**
  * @callback augmentIconsCallback
@@ -13,60 +28,76 @@ const isOSX = helpers.isOSX;
  * Will check and convert a `.png` to `.icns` if necessary and augment
  * options.icon with the result
  *
- * @param options will need options.platform and options.icon
+ * @param inpOptions will need options.platform and options.icon
  * @param {augmentIconsCallback} callback
  */
-function iconBuild(options, callback) {
+function iconBuild(inpOptions, callback) {
+  const options = Object.assign({}, inpOptions);
+  const returnCallback = () => {
+    callback(null, options);
+  };
 
-    const returnCallback = () => {
-        callback(null, options);
-    };
+  if (!options.icon) {
+    returnCallback();
+    return;
+  }
 
-    if (!options.icon) {
+  if (options.platform === 'win32') {
+    if (iconIsIco(options.icon)) {
+      returnCallback();
+      return;
+    }
+
+    convertToIco(options.icon)
+      .then((outPath) => {
+        options.icon = outPath;
         returnCallback();
-        return;
-    }
-
-    if (options.platform !== 'darwin') {
-        if (iconIsPng(options.icon)) {
-            returnCallback();
-        } else {
-            console.warn('Icon should be a png for Linux and Windows apps');
-            returnCallback();
-        }
-        return;
-    }
-
-    if (iconIsIcns(options.icon)) {
+      })
+      .catch((error) => {
+        log.warn('Skipping icon conversion to .ico', error);
         returnCallback();
-        return;
-    }
+      });
+    return;
+  }
 
+  if (options.platform === 'linux') {
     if (iconIsPng(options.icon)) {
-
-        if (!isOSX()) {
-            console.warn('Conversion of `.png` to `.icns` for OSX app is only supported on OSX');
-            returnCallback();
-            return;
-        }
-
-        pngToIcns(options.icon, (error, icnsPath) => {
-            options.icon = icnsPath;
-            if (error) {
-                console.warn('Skipping icon conversion from `.png` to `.icns`: ', error);
-            }
-            returnCallback();
-            return;
-        });
+      returnCallback();
+      return;
     }
-}
 
-function iconIsPng(iconPath) {
-    return path.extname(iconPath) === '.png';
-}
+    convertToPng(options.icon)
+      .then((outPath) => {
+        options.icon = outPath;
+        returnCallback();
+      })
+      .catch((error) => {
+        log.warn('Skipping icon conversion to .png', error);
+        returnCallback();
+      });
+    return;
+  }
 
-function iconIsIcns(iconPath) {
-    return path.extname(iconPath) === '.icns';
+  if (iconIsIcns(options.icon)) {
+    returnCallback();
+    return;
+  }
+
+  if (!isOSX()) {
+    log.warn('Skipping icon conversion to .icns, conversion is only supported on OSX');
+    returnCallback();
+    return;
+  }
+
+  convertToIcns(options.icon)
+    .then((outPath) => {
+      options.icon = outPath;
+      returnCallback();
+    })
+    .catch((error) => {
+      log.warn('Skipping icon conversion to .icns', error);
+      returnCallback();
+    });
 }
 
 export default iconBuild;
